@@ -1,0 +1,4 @@
+interface:
+  display_name: "课程视频转图文"
+  short_description: "Create illustrated lesson notes using course materials"
+  default_prompt: "使用 $video-lesson-to-html 结合课件将课程视频转成图文 HTML。"
