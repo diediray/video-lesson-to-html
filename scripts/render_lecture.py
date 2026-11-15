@@ -48,8 +48,17 @@ def main():
     # text while all letters survive the split.
     owners=[];review_chars=[]
     for i,row in enumerate(speech):
-        for ch in row.get('text',''):
-            if not ch.isspace():review_chars.append(ch);owners.append(i)
+        value=row.get('text','');mask=[False]*len(value);spans=row.get('uncertain_spans',[])
+        if spans and not row.get('uncertain'):raise ValueError('Uncertainty spans require uncertain=true')
+        if row.get('uncertain'):
+            if not spans:mask=[True]*len(value)
+            else:
+                for span in spans:
+                    pos=value.find(span)
+                    if not span or pos<0 or value.find(span,pos+1)>=0:raise ValueError('Uncertainty span must occur exactly once')
+                    for j in range(pos,pos+len(span)):mask[j]=True
+        for j,ch in enumerate(value):
+            if not ch.isspace():review_chars.append(ch);owners.append((i,mask[j]))
     imported=''.join(item.get('text','') for sec in sections for item in sec.get('speech',[]))
     if ''.join(review_chars) != ''.join(ch for ch in imported if not ch.isspace()):
         raise ValueError('Imported subtitles differ from reviewed text; re-import reviewed SRT')
@@ -59,9 +68,9 @@ def main():
             active=None;piece=[]
             def flush():
                 if active is None or not ''.join(piece).strip():return
-                original=speech[active];a=max(float(item['start']),float(original['start']));b=min(float(item['end']),float(original['end']))
+                original=speech[active[0]];a=max(float(item['start']),float(original['start']));b=min(float(item['end']),float(original['end']))
                 if b<a:a,b=float(original['start']),float(original['end'])
-                grouped[sec_index].append({'start':a,'end':b,'text':''.join(piece),'uncertain':bool(original.get('uncertain'))})
+                grouped[sec_index].append({'start':a,'end':b,'text':''.join(piece),'uncertain':active[1]})
             for ch in item.get('text',''):
                 if ch.isspace():
                     if active is not None:piece.append(ch)

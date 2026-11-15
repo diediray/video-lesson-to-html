@@ -22,6 +22,10 @@ def main():
         if status not in {'reviewed','uncertain','non_speech','digital_silence'}:raise ValueError(f'No review decision at {i}')
         if status=='uncertain' and not new.get('uncertain'):raise ValueError(f'Missing uncertain flag at {i}')
         if status!='uncertain' and new.get('uncertain'):raise ValueError(f'Unexpected uncertain flag at {i}')
+        spans=new.get('uncertain_spans',[])
+        if spans and status!='uncertain':raise ValueError(f'Unexpected uncertainty spans at {i}')
+        for span in spans:
+            if not span or text.count(span)!=1:raise ValueError(f'Uncertainty span must occur exactly once at {i}')
         if not text and old.get('text','').strip() and status!='non_speech':raise ValueError(f'Nonempty original was dropped at {i}')
         if status=='non_speech' and not new.get('reason','').strip():raise ValueError(f'Missing reason for non-speech at {i}')
         if text:
