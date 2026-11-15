@@ -14,7 +14,6 @@ from pathlib import Path
 import re
 import subprocess
 import sys
-import time
 import wave
 import numpy as np
 
@@ -110,9 +109,27 @@ def context_for(start, end, ranges):
 
 
 def course2md_running():
-    """Yield between chunks if another course2md process is active."""
-    result = subprocess.run(['/bin/ps', '-Ao', 'comm='], capture_output=True, text=True, check=True)
-    return any(Path(line.strip()).name == 'course2md' for line in result.stdout.splitlines())
+    """Fail closed on inspection error; exclude this process and its ancestors."""
+    result = subprocess.run(['/bin/ps', '-axo', 'pid=,ppid=,comm=,args='], capture_output=True, text=True, check=True)
+    processes = []
+    for line in result.stdout.splitlines():
+        parts = line.strip().split(None, 3)
+        if len(parts) == 4 and parts[0].isdigit() and parts[1].isdigit():
+            processes.append((int(parts[0]), int(parts[1]), parts[2], parts[3]))
+    parents = {pid: ppid for pid, ppid, _, _ in processes}
+    excluded = {os.getpid()}
+    ancestor = os.getpid()
+    while ancestor in parents and parents[ancestor] not in excluded and parents[ancestor] > 0:
+        ancestor = parents[ancestor]
+        excluded.add(ancestor)
+    for pid, _, executable, args in processes:
+        if pid in excluded:
+            continue
+        name = Path(executable).name.lower()
+        cmd = args.lower()
+        if name == 'course2md' or (name.startswith('python') and any(x in cmd for x in ('context_asr.py', 'mlx_qwen3_asr', 'qwen3-asr', 'qwen3_asr'))):
+            return True
+    return False
 
 
 def main():
@@ -121,8 +138,9 @@ def main():
     ap.add_argument('--model', required=True, help='local Qwen3-ASR 0.6B MLX model directory')
     ap.add_argument('--context-file', required=True, help='JSON object with ranges of {start,end,terms}')
     ap.add_argument('--boundaries', help='optional speech interval JSON or JSONL; only used to guide cuts')
+    ap.add_argument('--language', default='Chinese', help='language passed to the ASR backend; e.g. Chinese or English')
     ap.add_argument('--work-dir', required=True)
-    ap.add_argument('--yield-to-course2md', action='store_true', help='exit 75 at a checkpoint when another course2md is running')
+    ap.add_argument('--yield-to-course2md', action='store_true', help='exit 75 at a checkpoint when another recognized transcription process is running; fail if process inspection is unavailable')
     args = ap.parse_args()
     out = Path(args.work_dir); out.mkdir(parents=True, exist_ok=True)
     audio = Path(args.audio).resolve(); model = Path(args.model).resolve()
@@ -143,6 +161,8 @@ def main():
     identity = {'format_version': 2, 'audio':str(audio), 'size':stat.st_size, 'mtime_ns':stat.st_mtime_ns,
                 'model':str(model), 'context_sha256':hashlib.sha256(ctx_path.read_bytes()).hexdigest(),
                 'ranges':ranges}
+    if args.language != 'Chinese':
+        identity['language'] = args.language
     fingerprint = hashlib.sha256(json.dumps(identity,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
     state = out/'运行配置.json'; journal = out/'逐段原始识别.jsonl'
     if state.exists():
@@ -181,10 +201,10 @@ def main():
                 row.update({'text':'','status':'digital_silence'})
             else:
                 data=(pcm.astype(np.float32)/32768.0,sample_rate)
-                text=session.transcribe(data,context=context,language='Chinese').text.strip()
+                text=session.transcribe(data,context=context,language=args.language).text.strip()
                 row['text']=text
                 if context_echo(text,context):
-                    row['without_context']=session.transcribe(data,context='',language='Chinese').text.strip()
+                    row['without_context']=session.transcribe(data,context='',language=args.language).text.strip()
                     row['status']='review_context_echo'
                 else:
                     row['status']='needs_gpt_proofreading'
