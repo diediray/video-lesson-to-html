@@ -6,7 +6,7 @@
 {"ranges":[{"start":0,"end":600,"terms":["Visium","Stereo-seq","bin","spot"]},{"start":600,"end":1200,"terms":["SAW","StereoMap","Stereopy"]}]}
 ```
 
-使用独立环境，安装 `mlx-qwen3-asr==0.4.4`，配置本地 0.6B MLX 模型。模型路径与课程缓存应由调用者指定，不修改、删除或覆盖共享模型和原视频。将视频音轨提取为与视频时间轴对齐的 16kHz、单声道、16-bit PCM WAV；检查音频起止和总时长（必要时用 `aresample=async=1:first_pts=0` 和 `apad` 处理时间差），不要默认为两者自动对齐。
+先检查项目的环境说明，优先使用已有的独立环境；缺少时安装 `mlx-qwen3-asr==0.4.4`，配置本地 0.6B MLX 模型。模型路径与课程缓存应由调用者指定，不修改、删除或覆盖共享模型和原视频。将视频音轨提取为与视频时间轴对齐的 16kHz、单声道、16-bit PCM WAV；检查音频起止和总时长（必要时用 `aresample=async=1:first_pts=0` 和 `apad` 处理时间差），不要默认为两者自动对齐。
 
 ```sh
 python scripts/context_asr.py --audio lecture.wav --model /path/to/qwen3-asr-0.6b-mlx --context-file context.json --work-dir /path/to/task-cache
