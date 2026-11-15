@@ -24,9 +24,11 @@ def norm(value):
 
 
 def context_echo(text, context):
+    raw_context = context
     text, context = norm(text), norm(context)
-    return bool(context and len(text) >= 6 and
-                (text in context or SequenceMatcher(None, text, context).ratio() > .72))
+    single_term = any(len(text) >= 3 and text == norm(term) for term in raw_context.split())
+    return bool(context and (single_term or (len(text) >= 6 and
+                (text in context or SequenceMatcher(None, text, context).ratio() > .72))))
 
 
 def format_time(seconds):
