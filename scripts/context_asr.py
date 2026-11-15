@@ -27,7 +27,9 @@ def context_echo(text, context):
     raw_context = context
     text, context = norm(text), norm(context)
     single_term = any(len(text) >= 3 and text == norm(term) for term in raw_context.split())
-    return bool(context and (single_term or (len(text) >= 6 and
+    prefix_echo = bool(len(context) >= 16 and len(text) >= len(context)*.6 and
+                       SequenceMatcher(None, text[:len(context)], context).ratio() > .78)
+    return bool(context and (single_term or prefix_echo or context in text or (len(text) >= 6 and
                 (text in context or SequenceMatcher(None, text, context).ratio() > .72))))
 
 
@@ -138,7 +140,7 @@ def main():
     intervals = load_intervals(args.boundaries)
     ranges = make_ranges(duration, intervals)
     stat = audio.stat()
-    identity = {'format_version': 1, 'audio':str(audio), 'size':stat.st_size, 'mtime_ns':stat.st_mtime_ns,
+    identity = {'format_version': 2, 'audio':str(audio), 'size':stat.st_size, 'mtime_ns':stat.st_mtime_ns,
                 'model':str(model), 'context_sha256':hashlib.sha256(ctx_path.read_bytes()).hexdigest(),
                 'ranges':ranges}
     fingerprint = hashlib.sha256(json.dumps(identity,ensure_ascii=False,sort_keys=True).encode()).hexdigest()
