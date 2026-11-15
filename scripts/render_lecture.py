@@ -3,6 +3,8 @@
 from __future__ import annotations
 import argparse
 import base64
+from bisect import bisect_right
+from difflib import SequenceMatcher
 import hashlib
 import html
 import json
@@ -59,28 +61,48 @@ def main():
                     for j in range(pos,pos+len(span)):mask[j]=True
         for j,ch in enumerate(value):
             if not ch.isspace():review_chars.append(ch);owners.append((i,mask[j]))
-    imported=''.join(item.get('text','') for sec in sections for item in sec.get('speech',[]))
-    if ''.join(review_chars) != ''.join(ch for ch in imported if not ch.isspace()):
-        raise ValueError('Imported subtitles differ from reviewed text; re-import reviewed SRT')
-    grouped=[[] for _ in sections];char_index=0
+    imported_chars=[];imported_scenes=[]
     for sec_index,sec in enumerate(sections):
         for item in sec.get('speech',[]):
-            active=None;piece=[]
-            def flush():
-                if active is None or not ''.join(piece).strip():return
-                original=speech[active[0]];a=max(float(item['start']),float(original['start']));b=min(float(item['end']),float(original['end']))
-                if b<a:a,b=float(original['start']),float(original['end'])
-                grouped[sec_index].append({'start':a,'end':b,'text':''.join(piece),'uncertain':active[1]})
             for ch in item.get('text',''):
-                if ch.isspace():
-                    if active is not None:piece.append(ch)
-                    continue
-                owner=owners[char_index];char_index+=1
-                if active is not None and owner!=active:
-                    flush();piece=[]
-                active=owner;piece.append(ch)
-            flush()
-    if char_index != len(owners):raise ValueError('Not all reviewed text was mapped to screenshots')
+                if not ch.isspace():imported_chars.append(ch);imported_scenes.append(sec_index)
+    original=''.join(review_chars);imported=''.join(imported_chars)
+    mapping=[None]*len(original);deleted=[]
+    for tag,i,j,k,l in SequenceMatcher(None,original,imported,autojunk=False).get_opcodes():
+        if tag=='equal':
+            for off in range(j-i):mapping[i+off]=imported_scenes[k+off]
+        elif tag=='delete':deleted.append((i,j))
+        else:raise ValueError('Imported subtitles contain unexpected changes; verify SRT before rendering')
+    # Recover reviewed text omitted by the subtitle importer; never infer new text.
+    for i,j in deleted:
+        low=mapping[i-1] if i and mapping[i-1] is not None else 0
+        high=mapping[j] if j<len(mapping) and mapping[j] is not None else len(sections)-1
+        if low>high:raise ValueError('Subtitle mapping is not monotonic')
+        for n in range(i,j):
+            row=speech[owners[n][0]]
+            preferred=max(0,bisect_right(starts,row['start'])-1)
+            mapping[n]=min(high,max(low,preferred))
+    if any(x is None for x in mapping):raise ValueError('Not all reviewed text was mapped to screenshots')
+    grouped=[[] for _ in sections];char_index=0
+    for row_index,row in enumerate(speech):
+        active=None;piece=[]
+        def flush():
+            if active is None or not ''.join(piece).strip():return
+            sec_index,is_uncertain=active;sec=sections[sec_index]
+            a=max(float(sec['t']),float(row['start']));b=min(float(sec['end']),float(row['end']))
+            if b<a:a,b=float(row['start']),float(row['end'])
+            grouped[sec_index].append({'start':a,'end':b,'text':''.join(piece),'uncertain':is_uncertain})
+        for ch in row.get('text',''):
+            if ch.isspace():
+                if active is not None:piece.append(ch)
+                continue
+            if owners[char_index][0]!=row_index:raise ValueError('Reviewed transcript mapping mismatch')
+            key=(mapping[char_index],owners[char_index][1]);char_index+=1
+            if active is not None and key!=active:flush();piece=[]
+            active=key;piece.append(ch)
+        flush()
+    if char_index != len(owners):raise ValueError('Not all reviewed text was rendered')
+    restored_chars=sum(j-i for i,j in deleted)
     url=quote(os.path.relpath(video,output.parent),safe='/')
     def line(row):
         text=esc(row['text'])
@@ -112,5 +134,5 @@ def main():
 const d=document.querySelector('#preview'),v=document.querySelector('#full');document.querySelectorAll('.zoom').forEach(b=>b.addEventListener('click',()=>{v.src=b.querySelector('img').src;v.alt=b.querySelector('img').alt;d.showModal()}));d.addEventListener('click',e=>{if(e.target===d)d.close()});const audio=document.querySelector('#audio'),status=document.querySelector('#status');let active=null,clipEnd=0;function reset(){if(active){active.textContent='▶ 听原音';active.setAttribute('aria-pressed','false');active=null}}audio.addEventListener('timeupdate',()=>{if(active&&audio.currentTime>=clipEnd){audio.pause();reset()}});audio.addEventListener('ended',reset);document.querySelectorAll('.listen').forEach(button=>button.addEventListener('click',async()=>{if(active===button&&!audio.paused){audio.pause();reset();return}audio.pause();reset();status.textContent='';const start=Number(button.dataset.start);clipEnd=Number(button.dataset.end);active=button;button.textContent='■ 停止';button.setAttribute('aria-pressed','true');try{if(!audio.src)audio.src='''+json.dumps(url,ensure_ascii=False)+''';audio.currentTime=start;await audio.play()}catch(e){reset();button.parentElement.querySelector('.fallback').hidden=false;status.textContent='原音播放失败，请点击文字旁的「打开视频」。'}}));
 </script></body></html>'''
     output.parent.mkdir(parents=True,exist_ok=True);output.write_text(doc,encoding='utf8')
-    print(json.dumps({'output':str(output),'segments':len(speech),'scenes':len(sections),'uncertain':sum(bool(x.get('uncertain')) for x in speech)},ensure_ascii=False))
+    print(json.dumps({'output':str(output),'segments':len(speech),'scenes':len(sections),'uncertain':sum(bool(x.get('uncertain')) for x in speech),'restored_import_chars':restored_chars},ensure_ascii=False))
 if __name__=='__main__':main()
