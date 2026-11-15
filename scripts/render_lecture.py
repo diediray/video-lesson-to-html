@@ -3,7 +3,6 @@
 from __future__ import annotations
 import argparse
 import base64
-from bisect import bisect_right
 import hashlib
 import html
 import json
@@ -44,9 +43,35 @@ def main():
     for path in frames.glob('*.jpg'):
         images_by_hash[hashlib.sha256(path.read_bytes()).hexdigest()]=path
     images={i['id']:images_by_hash[i['sha256']] for i in data['images']}
-    grouped=[[] for _ in sections]
-    for row in speech:
-        if row.get('text','').strip():grouped[max(0,bisect_right(starts,row['start'])-1)].append(row)
+    # course2md splits imported SRT at screenshot transitions. Match its text
+    # back to the reviewed segments so uncertainty stays attached to the exact
+    # text while all letters survive the split.
+    owners=[];review_chars=[]
+    for i,row in enumerate(speech):
+        for ch in row.get('text',''):
+            if not ch.isspace():review_chars.append(ch);owners.append(i)
+    imported=''.join(item.get('text','') for sec in sections for item in sec.get('speech',[]))
+    if ''.join(review_chars) != ''.join(ch for ch in imported if not ch.isspace()):
+        raise ValueError('Imported subtitles differ from reviewed text; re-import reviewed SRT')
+    grouped=[[] for _ in sections];char_index=0
+    for sec_index,sec in enumerate(sections):
+        for item in sec.get('speech',[]):
+            active=None;piece=[]
+            def flush():
+                if active is None or not ''.join(piece).strip():return
+                original=speech[active];a=max(float(item['start']),float(original['start']));b=min(float(item['end']),float(original['end']))
+                if b<a:a,b=float(original['start']),float(original['end'])
+                grouped[sec_index].append({'start':a,'end':b,'text':''.join(piece),'uncertain':bool(original.get('uncertain'))})
+            for ch in item.get('text',''):
+                if ch.isspace():
+                    if active is not None:piece.append(ch)
+                    continue
+                owner=owners[char_index];char_index+=1
+                if active is not None and owner!=active:
+                    flush();piece=[]
+                active=owner;piece.append(ch)
+            flush()
+    if char_index != len(owners):raise ValueError('Not all reviewed text was mapped to screenshots')
     url=quote(os.path.relpath(video,output.parent),safe='/')
     def line(row):
         text=esc(row['text'])
