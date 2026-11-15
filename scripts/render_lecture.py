@@ -67,11 +67,12 @@ def main():
             for ch in item.get('text',''):
                 if not ch.isspace():imported_chars.append(ch);imported_scenes.append(sec_index)
     original=''.join(review_chars);imported=''.join(imported_chars)
-    mapping=[None]*len(original);deleted=[]
+    mapping=[None]*len(original);deleted=[];ignored_fillers=0
     for tag,i,j,k,l in SequenceMatcher(None,original,imported,autojunk=False).get_opcodes():
         if tag=='equal':
             for off in range(j-i):mapping[i+off]=imported_scenes[k+off]
         elif tag=='delete':deleted.append((i,j))
+        elif tag=='insert' and all(ch in '嗯呃啊哦噢' for ch in imported[k:l]):ignored_fillers+=l-k
         else:raise ValueError('Imported subtitles contain unexpected changes; verify SRT before rendering')
     # Recover reviewed text omitted by the subtitle importer; never infer new text.
     for i,j in deleted:
@@ -134,5 +135,5 @@ def main():
 const d=document.querySelector('#preview'),v=document.querySelector('#full');document.querySelectorAll('.zoom').forEach(b=>b.addEventListener('click',()=>{v.src=b.querySelector('img').src;v.alt=b.querySelector('img').alt;d.showModal()}));d.addEventListener('click',e=>{if(e.target===d)d.close()});const audio=document.querySelector('#audio'),status=document.querySelector('#status');let active=null,clipEnd=0;function reset(){if(active){active.textContent='▶ 听原音';active.setAttribute('aria-pressed','false');active=null}}audio.addEventListener('timeupdate',()=>{if(active&&audio.currentTime>=clipEnd){audio.pause();reset()}});audio.addEventListener('ended',reset);document.querySelectorAll('.listen').forEach(button=>button.addEventListener('click',async()=>{if(active===button&&!audio.paused){audio.pause();reset();return}audio.pause();reset();status.textContent='';const start=Number(button.dataset.start);clipEnd=Number(button.dataset.end);active=button;button.textContent='■ 停止';button.setAttribute('aria-pressed','true');try{if(!audio.src)audio.src='''+json.dumps(url,ensure_ascii=False)+''';audio.currentTime=start;await audio.play()}catch(e){reset();button.parentElement.querySelector('.fallback').hidden=false;status.textContent='原音播放失败，请点击文字旁的「打开视频」。'}}));
 </script></body></html>'''
     output.parent.mkdir(parents=True,exist_ok=True);output.write_text(doc,encoding='utf8')
-    print(json.dumps({'output':str(output),'segments':len(speech),'scenes':len(sections),'uncertain':sum(bool(x.get('uncertain')) for x in speech),'restored_import_chars':restored_chars},ensure_ascii=False))
+    print(json.dumps({'output':str(output),'segments':len(speech),'scenes':len(sections),'uncertain':sum(bool(x.get('uncertain')) for x in speech),'restored_import_chars':restored_chars,'ignored_import_fillers':ignored_fillers},ensure_ascii=False))
 if __name__=='__main__':main()
