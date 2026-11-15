@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Export a reviewed transcript after verifying coverage against the ASR journal."""
-import argparse,json
+import argparse,json,re
 from pathlib import Path
 
 
@@ -19,15 +19,16 @@ def main():
         if old['index']!=i or new.get('index')!=i:raise ValueError(f'Unexpected segment index at {i}')
         if any(abs(float(old[k])-float(new[k]))>.001 for k in ('start','end')):raise ValueError(f'Time range changed at {i}')
         status=new.get('review_status');text=new.get('text','').strip()
-        if status not in {'reviewed','uncertain','non_speech','digital_silence'}:raise ValueError(f'No review decision at {i}')
+        if status not in {'reviewed','uncertain','non_speech','digital_silence','filler_only'}:raise ValueError(f'No review decision at {i}')
         if status=='uncertain' and not new.get('uncertain'):raise ValueError(f'Missing uncertain flag at {i}')
         if status!='uncertain' and new.get('uncertain'):raise ValueError(f'Unexpected uncertain flag at {i}')
         spans=new.get('uncertain_spans',[])
         if spans and status!='uncertain':raise ValueError(f'Unexpected uncertainty spans at {i}')
         for span in spans:
             if not span or text.count(span)!=1:raise ValueError(f'Uncertainty span must occur exactly once at {i}')
-        if not text and old.get('text','').strip() and status!='non_speech':raise ValueError(f'Nonempty original was dropped at {i}')
-        if status=='non_speech' and not new.get('reason','').strip():raise ValueError(f'Missing reason for non-speech at {i}')
+        if not text and old.get('text','').strip() and status not in {'non_speech','filler_only'}:raise ValueError(f'Nonempty original was dropped at {i}')
+        if status in {'non_speech','filler_only'} and not new.get('reason','').strip():raise ValueError(f'Missing omission reason at {i}')
+        if status=='filler_only' and (text or re.sub(r'[\s嗯呃额哦啊哎唉噢，。！？；：、…,.!?;:—\-]','',old.get('text',''))):raise ValueError(f'Filler-only segment has substantive text at {i}')
         if text:
             cues.append(f'{len(cues)+1}\n{ts(new["start"])} --> {ts(new["end"])}\n{text}\n')
     Path(a.output).write_text('\n'.join(cues),encoding='utf8')
