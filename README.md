@@ -1,76 +1,78 @@
-# 课程视频转图文 HTML
+# Video Lesson to HTML
 
-一个供 Codex 使用的 Skill：结合课程资料，把教学视频整理成可阅读的图文讲义。每张课程画面等宽显示，老师对应的讲解紧接在下方；有疑难的短句可以点击播放原音。
+[English](README.md) | [简体中文](README.zh-CN.md)
 
-## 模型选择
+A Codex skill that turns a lesson video and its supporting materials into an illustrated HTML guide. Each slide or screen appears above the corresponding explanation, and unclear phrases include a button to play the original audio.
 
-作者实测，使用 **gpt-6.1-terra（xhigh 推理强度）**阅读课件、校对字幕和整理讲义，效果已经很舒适。这些工作不一定需要最顶级的大模型；实际效果也会受到课程音质和资料质量的影响。
+## Model choice
 
-语音识别是另一步：默认使用本地 **Qwen3-ASR 0.6B** 听音频并生成初稿，再由 Codex 结合课件校对。
+In the author's testing, **gpt-6.1-terra with xhigh reasoning** was already comfortable for reading course materials, correcting transcripts, and organizing the guide. A top-tier model is not essential; results also depend on the quality of the audio and course materials.
 
-## 工作流程
+Speech recognition is a separate step: the default setup uses **Qwen3-ASR 0.6B** locally to produce the first transcript. Codex then reviews it against the course materials.
+
+## Workflow
 
 ```mermaid
 flowchart LR
-    A[寻找课程资料] --> B[阅读课件与代码<br/>整理分时段术语]
-    B --> C[检查环境<br/>判断讲课语言]
-    C --> D[语音识别<br/>音频 + 对应术语]
-    D --> E[结合课件和画面<br/>逐段校对]
-    E --> F[课程截图 + 讲解文字<br/>生成 HTML]
-    F --> G[检查内容、画面与原音播放]
+    A[Find course materials] --> B[Read materials and code<br/>Prepare terms by topic]
+    B --> C[Check the environment<br/>Identify the spoken language]
+    C --> D[Speech recognition<br/>Audio + relevant terms]
+    D --> E[Review against materials<br/>and video frames]
+    E --> F[Generate HTML<br/>Screenshots + explanation]
+    F --> G[Check coverage, layout,<br/>and audio playback]
 ```
 
-1. **寻找资料**：先查找视频对应的 PPT、PDF、代码、讲义或教材；找到后确认课程和章节。没有单课课件时，也可根据教材目录和课程内容查找相关章节。
-2. **整理术语**：阅读相关文字、图表和代码，按视频讲解的主题与时段整理精简词表。课程资料用于理解内容和核对名词。
-3. **准备识别**：检查工具、模型和存储空间，并根据实际讲课内容判断语言。中文讲解中出现英文专业名词时，仍按中文讲解处理。
-4. **识别与校对**：默认使用本地 Qwen3-ASR 0.6B；将每段音频及相应词表交给支持 `context` 的识别后端。Codex 再对照课件、代码和画面校对，保留讲课的例子、步骤、数字、条件及观点，去掉无信息量的口头填充词。核实后仍不确定的短句旁提供原音按钮。
-5. **生成讲义**：根据视频画面和时间戳生成 HTML，截图在上、对应讲解在下；支持查看原视频、放大截图和播放待听辨片段。交付前检查时间覆盖、图文对应和播放。
+1. **Find the materials.** Look for the lesson's slides, PDFs, code, handouts, or textbook. When a lesson has no dedicated slides, use the course outline and textbook contents to locate relevant chapters.
+2. **Prepare terminology.** Read the relevant text, figures, and code; then organize concise term lists by the topics and time ranges covered in the video.
+3. **Prepare transcription.** Check the tools, model, and storage space. Determine the spoken language from the lesson. For example, a Chinese lecture with English technical terms is treated as Chinese speech.
+4. **Transcribe and review.** By default, Qwen3-ASR 0.6B receives each audio segment with its relevant terms. Codex reviews the transcript against the materials, code, and frames, preserving the instructor's examples, steps, numbers, conditions, and views while removing non-informative filler. Phrases that remain unclear after review get an audio playback button.
+5. **Create the guide.** Generate HTML with evenly sized screenshots and the corresponding explanation beneath each one. The guide links to the source video and supports image enlargement and playback of unclear passages. Check coverage, alignment, and playback before delivery.
 
-课程资料由 Codex 阅读并整理；语音模型收到的是**相关术语和音频**。资料能帮助识别和校对，老师实际讲了什么仍以音频为准。Skill 由 Codex 协助执行，资料查找、术语整理和校对需要结合实际课程判断。
+Codex reads and interprets the course materials; the speech model receives **audio and relevant terms**. Course materials help with recognition and review, while the audio remains the source for what the instructor actually said. Finding materials, organizing terms, and proofreading require Codex to exercise judgment for each lesson.
 
-## 课件术语如何交给千问
+## How course terminology reaches Qwen
 
-课程中的专业名词经常容易被语音模型听错。这个 Skill 会先让 Codex 阅读课件、教材和代码，结合视频进度整理每个时段可能用到的术语。例如：
+Speech recognition can mishear specialized terms. Codex first reads the slides, textbook, or code and prepares a short vocabulary for each part of the lesson. For example:
 
-| 课程内容 | 该时段的术语提示 |
+| Lesson topic | Terms for that section |
 | --- | --- |
-| 介绍空间转录组平台 | Stereo-seq、SAW、StereoMap、Stereopy |
-| 讲解数据分析代码 | AnnData、Scanpy、GEF、Harmony |
+| Spatial transcriptomics platforms | Stereo-seq, SAW, StereoMap, Stereopy |
+| Data analysis code | AnnData, Scanpy, GEF, Harmony |
 
-随后，[context_asr.py](scripts/context_asr.py) 会根据每段音频的时间，从词表中挑出对应术语，通过识别后端的 `context` 参数，将**音频和这组术语一起交给本地 Qwen3-ASR 0.6B**。如果片段跨越两个主题，脚本会合并相关时段的词。
+The bridge script, [context_asr.py](scripts/context_asr.py), uses each audio segment's timestamps to select the relevant terms. It passes **the audio and those terms together to local Qwen3-ASR 0.6B** through the recognition backend's `context` parameter. If a segment crosses two topics, the script combines the relevant lists.
 
-这样千问在识别时就有专业术语作参考，可以帮助减少名词误识别。术语提示也可能出现识别错误，因此 Codex 还会对照课件、画面和上下文校对，必要时回听原音。课件和教材由 Codex 阅读，千问收到的是整理后的术语，并不是整份材料。
+The terms give the model useful context and can reduce errors in specialized names. Recognition can still make mistakes, so Codex checks the result against the materials, frames, and surrounding explanation, and listens to the audio when needed. Codex reads the course materials; Qwen receives the selected terms rather than the entire document.
 
-具体的词表格式和脚本用法见[术语提示识别说明](references/context-asr.md)。
+See the [context-aware ASR guide](references/context-asr.md) for the vocabulary format and script usage. The detailed guide is currently in Chinese.
 
-## 文件管理
+## File management
 
-原视频、课件和最终讲义放在清晰的课程目录；处理时产生的音频、原始识别、校对记录和截图集中存放。讲义完成并检查通过后，Codex 会清理本次不再需要的临时音频、截图副本和中间导出文件，保留原始识别与必要的校对记录。共享模型和运行环境单独保存。
+Keep the original video, materials, and final guide in an organized course folder. Audio, raw transcripts, review records, and extracted frames are grouped in a course work directory. After the guide is complete and verified, Codex cleans up temporary audio, duplicate screenshots, and intermediate exports that are no longer needed; raw recognition and necessary review records are retained. Shared models and runtime environments are kept separately.
 
-讲义中的原音按钮依赖原视频文件。移动或清理文件时，请保持 HTML 与原视频之间的链接有效。
+The audio playback buttons depend on the source video. If you move or clean up files, keep the links between the HTML guide and the video working.
 
-## 安装到 Codex
+## Install for Codex
 
-安装 [Node.js](https://nodejs.org/) 后，在终端运行：
+Install [Node.js](https://nodejs.org/), then run:
 
 ```bash
 npx skills add diediray/video-lesson-to-html -a codex
 ```
 
-也可直接将包含 `SKILL.md` 的 Skill 文件夹放入 Codex 的 `skills` 目录。安装后可在 Codex 中调用：
+You can also place the skill folder containing `SKILL.md` in Codex's `skills` directory. Then ask Codex:
 
 ```text
-使用 $video-lesson-to-html，把这个课程视频结合课件整理成完整图文 HTML。
+Use $video-lesson-to-html to turn this course video and its materials into a complete illustrated HTML guide.
 ```
 
-## 运行条件
+## Requirements
 
-Skill 提供工作流程，还需要可用的视频处理工具和语音识别模型。可使用 [course2md](https://github.com/mizorewww/course2md) 处理视频；本仓库的术语提示脚本支持使用 `mlx-qwen3-asr` 和本地 Qwen3-ASR 0.6B MLX 权重，适合兼容 MLX 的 Apple Silicon 环境。其他设备需选择兼容的识别方案，并根据工具实际支持情况处理术语提示。
+The skill provides a workflow; video processing tools and a speech recognition model are also required. [course2md](https://github.com/mizorewww/course2md) can process the video. The included context-aware ASR script supports `mlx-qwen3-asr` and local Qwen3-ASR 0.6B MLX weights on Apple Silicon systems compatible with MLX. Other devices require a compatible recognition backend, with terminology prompts handled according to that backend's capabilities.
 
-自动识别与校对效果取决于音频、画面和资料质量。请结合原视频检查仍有疑问的名词、数字或句子。
+Recognition and review quality depend on the audio, video, and course materials. Check uncertain names, numbers, and sentences against the original video.
 
-## 最新更新
+## Latest updates
 
-- 增加课程资料与大型教材的查找和处理指引，并按课程内容准备分时段术语。
-- 增加环境检查工具；由 Codex 判断课程讲解语言，识别脚本支持设置中文或英文。
-- 完善课程文件整理、完整讲解校对和图文交付流程；完成并检查后主动清理本次无用的临时文件。
+- Added guidance for finding course materials, selecting relevant textbook chapters, and preparing terms by topic and time range.
+- Added an environment check; Codex identifies the spoken language and the recognition script supports Chinese or English settings.
+- Improved file organization, full-lesson review, HTML delivery, and cleanup of completed temporary files.
