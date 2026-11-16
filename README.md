@@ -19,14 +19,14 @@ flowchart LR
     C --> D[Transcribe audio<br/>using relevant terms]
     D --> E[Review against materials<br/>and video frames]
     E --> F[Create an HTML guide<br/>Screenshots + explanations]
-    F --> G[Check coverage, layout,<br/>and audio playback]
+    F --> G[Check transcript coverage<br/>and file links]
 ```
 
 1. **Find the materials.** Codex looks for the lesson's slides, PDFs, code, handouts, or textbook. If the lesson has no dedicated slides, it uses the course outline and textbook contents to find relevant chapters.
 2. **Prepare the glossary.** Codex reads the relevant text, figures, and code, then groups key terms by topic and by when they come up in the video.
 3. **Prepare for transcription.** Codex checks the tools, model, and available storage, then identifies the language spoken in the lesson. A lecture in Chinese that uses English technical terms, for example, is still treated as Chinese speech.
 4. **Transcribe and review.** Qwen3-ASR 0.6B receives each audio segment along with the relevant terms. Codex checks the resulting transcript against the materials, code, and video frames. It retains the instructor's examples, steps, numbers, conditions, and viewpoints while removing filler words that add no meaning. Any passage that remains unclear after review gets an audio playback button.
-5. **Create the guide.** Codex generates an HTML page with evenly sized screenshots and the corresponding explanations below them. Readers can enlarge images, open the source video, and play audio for unclear passages. Before delivery, Codex checks that the transcript covers the lesson and that the images, text, and playback align.
+5. **Create the guide.** Codex generates an HTML page with evenly sized screenshots and the corresponding explanations below them. Readers can enlarge images, open the source video, and play audio for unclear passages. Before delivery, Codex checks that the transcript covers the lesson and that referenced files are in place.
 
 Codex reads the course materials; the speech model receives **audio and relevant terms**. The materials help with recognition and review, while the original audio remains the best reference for what the instructor said.
 
@@ -41,7 +41,7 @@ Speech recognition models can mishear technical terms. Codex first reads the sli
 
 The script [context_asr.py](scripts/context_asr.py) uses each audio segment's timestamps to select the relevant terms. It passes **the audio and terms together to the local Qwen3-ASR 0.6B model** through the recognition backend's `context` parameter. If a segment spans two topics, the script combines both term lists.
 
-These hints give the model context that can help it recognize technical terms. Mistakes are still possible, so Codex checks the transcript against the materials, video frames, and surrounding discussion, and listens to the audio when needed. Codex reads the course materials; Qwen receives the selected terms, not the full document.
+These hints give the model context that can help it recognize technical terms. Mistakes are still possible, so Codex checks the transcript against the materials, video frames, and surrounding discussion, and analyzes the audio without audible playback when needed. Codex reads the course materials; Qwen receives the selected terms, not the full document.
 
 See the [context-aware ASR guide](references/context-asr.md) for the glossary format and script usage. The detailed guide is currently in Chinese.
 
